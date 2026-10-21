@@ -1,7 +1,6 @@
 # AI Chess Assistant
 
 Nhận diện bàn cờ vua thật qua camera và gợi ý nước đi bằng Stockfish.
-Lộ trình chi tiết: [lo_trinh_du_an_ai_chess_assistant.md](lo_trinh_du_an_ai_chess_assistant.md).
 
 ## Cài đặt
 
