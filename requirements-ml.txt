@@ -1,0 +1,9 @@
+-r requirements.txt
+ultralytics>=8.3
+albumentations
+matplotlib
+# torch/torchvision bản CUDA phải cài SAU cùng (ultralytics kéo bản CPU từ PyPI):
+#   pip install --force-reinstall --no-deps torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# albumentations kéo theo opencv-python-headless, bản này ghi đè cv2 và làm mất cửa sổ (cv2.imshow). Gỡ đi:
+#   pip uninstall -y opencv-python-headless
+#   pip install --force-reinstall --no-deps opencv-python

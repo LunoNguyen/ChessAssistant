@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Binary Stockfish tải về thủ công
+engines/*
+!engines/README.md
+
+# Dữ liệu và cấu hình theo từng máy
+data/
+config/calibration.json
+runs/
+
+# Mô hình đã train
+models/
+
+# Workspace của superpowers
+.superpowers/
+
+# Gói dữ liệu tải lên Colab
+colab_upload/
