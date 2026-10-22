@@ -4,7 +4,7 @@
 ![YOLO11](https://img.shields.io/badge/Ultralytics-YOLO11-111F68)
 ![OpenCV](https://img.shields.io/badge/OpenCV-5.x-5C3EE8?logo=opencv&logoColor=white)
 ![Stockfish](https://img.shields.io/badge/Stockfish-19-7FA650)
-![Tests](https://img.shields.io/badge/tests-224%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-239%20passed-brightgreen)
 
 Trợ lý cờ vua qua camera: nhìn bàn cờ (bàn cờ thật hoặc bàn cờ 2D trên màn hình) bằng camera điện thoại,
 tự theo dõi ván đang chơi và **tô màu ô gợi ý nước đi tốt nhất** của Stockfish ngay trên video —
@@ -29,6 +29,7 @@ kèm màn hình HUD 240×240 chuẩn bị cho phiên bản gắn trên kính.
 - [Kiểm thử](#kiểm-thử)
 - [Cấu trúc dự án](#cấu-trúc-dự-án)
 - [Báo lỗi và đóng góp](#báo-lỗi-và-đóng-góp)
+- [Phần cứng kính (ESP32-S3)](#phần-cứng-kính-esp32-s3)
 - [Lộ trình](#lộ-trình)
 - [Nguồn dữ liệu và giấy phép](#nguồn-dữ-liệu-và-giấy-phép)
 
@@ -228,14 +229,25 @@ python -m scripts.train_pieces --data data/pieces/data.yaml --model models/piece
 
 Colab bị ngắt giữa chừng: đặt `RESUME = True` ở ô cấu hình và chạy lại — checkpoint nằm trên Drive.
 
+### Model FOMO cho ESP32-S3 (thử nghiệm)
+
+YOLO quá nặng cho vi điều khiển, nên có thêm model **FOMO**: chỉ ra *tâm* quân (Trắng/Đen) và 4 góc bàn cờ,
+bản int8 khoảng 100 KB, chạy bằng TFLite Micro trên ESP32-S3.
+
+1. `python -m scripts.prepare_fomo` → `colab_upload/fomo_dataset.zip` (đọc thẳng ChessReD2K, cờ 2D, ảnh tự chụp).
+2. Tải `fomo_dataset.zip` lên `MyDrive/ChessAssistant/`, mở `notebooks/train_fomo_colab.ipynb` trên Colab, chạy hết.
+   Notebook train, đánh giá độ đúng 64 ô (cả bản int8), rồi xuất `fomo_esp32.zip` (model dạng mảng C + thông số).
+3. Chép 3 file trong `fomo_esp32.zip` vào `firmware/esp32s3_fomo/main/model/`, build theo
+   [firmware/esp32s3_fomo/README.md](firmware/esp32s3_fomo/README.md).
+
 ## Kiểm thử
 
 ```bash
 python -m pytest -q
 ```
 
-Gồm 224 test: hình học bàn cờ, dò bàn cờ trên ảnh mô phỏng và ảnh thật, theo dõi ván (nhập thành, bắt tốt qua đường,
-phong cấp, bỏ lỡ nước, đọc lại), Stockfish, overlay/HUD, chuyển đổi dữ liệu. Test cần Stockfish/model/dữ liệu ChessReD
+Gồm 239 test: hình học bàn cờ, dò bàn cờ trên ảnh mô phỏng và ảnh thật, theo dõi ván (nhập thành, bắt tốt qua đường,
+phong cấp, bỏ lỡ nước, đọc lại), Stockfish, overlay/HUD, chuyển đổi dữ liệu, FOMO (nhãn, giải mã, 4 góc → 64 ô). Test cần Stockfish/model/dữ liệu ChessReD
 tự bỏ qua nếu máy chưa có.
 
 ## Cấu trúc dự án
@@ -252,13 +264,15 @@ chess_assistant/
 ├── advisor.py       Stockfish ở luồng nền (gợi ý cả hai bên, chế độ luyện tập)
 ├── pipeline.py      ghép các bước cho mỗi frame, tự sửa/tự nhận hướng bàn cờ
 ├── overlay.py       vẽ lên video: viền bàn cờ, tô ô gợi ý, thanh điểm, sơ đồ mini
-├── hud.py           màn hình 240×240 cho kính (cửa sổ laptop / ST7789 trên Raspberry Pi)
+├── hud.py           màn hình 240×240 cho kính (thử bằng cửa sổ trên laptop)
 ├── camera.py        mở camera / URL DroidCam, tự kết nối lại
 ├── engine.py        tìm và điều khiển Stockfish
+├── fomo.py          FOMO cho ESP32: nhãn tâm quân, giải mã lưới, 4 góc → 64 ô (dùng chung với notebook)
 ├── dataset.py · chessred.py · screen2d.py · geolabel.py · autolabel.py   chuẩn bị dữ liệu
 └── evaluation.py    chỉ số đánh giá
 scripts/             play, replay_chessred, hud_test, capture_geometric, prepare_dataset, train_pieces, export_colab, ...
-notebooks/           train_colab.ipynb
+notebooks/           train_colab.ipynb (YOLO), train_fomo_colab.ipynb (FOMO cho ESP32)
+firmware/            esp32s3_fomo (ESP-IDF: camera → FOMO int8 → 64 ô)
 docs/                hardware/glasses_plan.md (kế hoạch gắn lên kính), images/, kế hoạch & thiết kế
 tests/               pytest
 engines/             đặt stockfish*.exe ở đây (không đưa vào git)
@@ -271,16 +285,93 @@ models/ · data/      model và dữ liệu (không đưa vào git)
 - Lỗi theo dõi ván: gửi file `data/games/*.pgn` của ván đó và mô tả nước bị ghi sai.
 - Đóng góp: mở issue trước khi sửa lớn; mọi thay đổi cần kèm test và `python -m pytest -q` phải qua.
 
+## Phần cứng kính (ESP32-S3)
+
+Raspberry Pi 5 quá đắt nên kính dùng **ESP32-S3** (tổng khoảng 0,5–0,8 triệu so với ~3 triệu của Pi).
+Việc được chia như sau:
+
+```text
+Kính (ESP32-S3 + camera)                              Laptop / điện thoại (code Python hiện có)
+  chụp 240x240 → FOMO int8 → 4 góc + quân  ── WiFi ──▶  theo dõi ván (luật cờ) + Stockfish
+  màn ST7789 vẽ sơ đồ + tô ô gợi ý         ◀── WiFi ──  nước gợi ý (vài chục byte)
+```
+
+ESP32 không chạy được YOLO, OpenCV hay Stockfish. Vì vậy kính chỉ làm phần nhìn (model FOMO nhẹ) và phần hiển thị;
+việc nặng vẫn để máy tính làm.
+
+### Linh kiện cần mua
+
+Link Shopee là **link tìm kiếm** (sản phẩm và giá thay đổi liên tục), giá là ước lượng — chọn shop đánh giá tốt,
+xem kỹ ảnh và thông số trước khi đặt.
+
+| # | Linh kiện | SL | Giá ước lượng | Chọn mua thế nào | Link |
+|---|---|---|---|---|---|
+| 1 | **Seeed XIAO ESP32S3 Sense** (kèm camera OV2640) | 1 | 350–450k | Phải là bản **Sense** (có camera, 8 MB PSRAM). Có sẵn mạch sạc pin LiPo | [Shopee](https://shopee.vn/search?keyword=xiao%20esp32s3%20sense) |
+| 2 | Màn hình **IPS 1.3" ST7789 240x240** SPI | 1 | 60–100k | Bản 7 chân (GND VCC SCL SDA RES DC BLK), chạy 3,3 V | [Shopee](https://shopee.vn/search?keyword=st7789%201.3%20inch%20240x240) |
+| 3 | Pin **LiPo 3,7 V 500–1000 mAh** | 1 | 50–90k | Loại dẹt, có mạch bảo vệ. Càng nhẹ càng dễ đeo | [Shopee](https://shopee.vn/search?keyword=pin%20lipo%203.7v%20800mah) |
+| 4 | Công tắc gạt mini **SS12D00** | 2 | 5k | 1 cái bật/tắt nguồn pin (mua dư 1) | [Shopee](https://shopee.vn/search?keyword=c%C3%B4ng%20t%E1%BA%AFc%20g%E1%BA%A1t%20ss12d00) |
+| 5 | Nút nhấn **6x6 mm** | 5 | 5k | Tạm dừng / lật bàn / dò lại | [Shopee](https://shopee.vn/search?keyword=n%C3%BAt%20nh%E1%BA%A5n%206x6) |
+| 6 | Dây điện **silicon 30AWG** (nhiều màu) | 1 | 20–40k | Mềm, nhỏ, dễ đi dây trên gọng kính | [Shopee](https://shopee.vn/search?keyword=d%C3%A2y%20%C4%91i%E1%BB%87n%20silicon%2030awg) |
+| 7 | **Breadboard mini + dây cắm dupont** đực-cái | 1 | 30–50k | Thử mạch trước khi hàn | [Shopee](https://shopee.vn/search?keyword=breadboard%20mini%20d%C3%A2y%20dupont) |
+| 8 | **Ống co nhiệt** các cỡ | 1 | 15–30k | Bọc mối hàn | [Shopee](https://shopee.vn/search?keyword=%E1%BB%91ng%20co%20nhi%E1%BB%87t) |
+| 9 | Cáp **USB-C có truyền dữ liệu** | 1 | 30–50k | Cáp chỉ sạc sẽ không nạp được code | [Shopee](https://shopee.vn/search?keyword=c%C3%A1p%20usb%20type%20c%20truy%E1%BB%81n%20d%E1%BB%AF%20li%E1%BB%87u) |
+
+**Dụng cụ** (bỏ qua nếu đã có):
+
+| Dụng cụ | Giá ước lượng | Link |
+|---|---|---|
+| Mỏ hàn chỉnh nhiệt 60 W + thiếc 0,6–0,8 mm + nhựa thông | 150–300k | [Shopee](https://shopee.vn/search?keyword=m%E1%BB%8F%20h%C3%A0n%20ch%E1%BB%89nh%20nhi%E1%BB%87t%2060w) |
+| Đồng hồ vạn năng (đo nguồn, dò chập mạch) | 100–200k | [Shopee](https://shopee.vn/search?keyword=%C4%91%E1%BB%93ng%20h%E1%BB%93%20v%E1%BA%A1n%20n%C4%83ng) |
+| Súng bắn keo nhiệt mini (gắn mạch lên gọng) | 50–80k | [Shopee](https://shopee.vn/search?keyword=s%C3%BAng%20b%E1%BA%AFn%20keo%20mini) |
+
+Tổng linh kiện khoảng **550–800k**, dụng cụ thêm 300–600k nếu chưa có. Gọng kính dùng gọng cũ bất kỳ.
+
+> **Không nên mua:** ESP32-CAM đời đầu (AI-Thinker) hoặc ESP32 thường. Chúng không có lệnh vector cho mạng nơ-ron và
+> thường thiếu PSRAM, nên model chạy rất chậm hoặc không vừa bộ nhớ. Nếu không mua được XIAO, có thể thay bằng
+> **Freenove ESP32-S3 WROOM CAM** (N8R8). Khi đó phải sửa chân camera trong firmware và thêm mạch sạc pin riêng.
+
+### Đấu nối dự kiến (XIAO ESP32S3 Sense ↔ ST7789)
+
+Camera đã gắn sẵn trên mạch Sense. Màn hình dùng SPI. Bảng này là **dự kiến**, vì code vẽ HUD trên ESP32 chưa viết.
+
+| ST7789 | XIAO | GPIO |
+|---|---|---|
+| VCC | 3V3 | — |
+| GND | GND | — |
+| SCL (SCK) | D8 | 7 |
+| SDA (MOSI) | D10 | 9 |
+| RES | D1 | 2 |
+| DC | D0 | 1 |
+| BLK (đèn nền) | D3 | 4 |
+| Nút nhấn | D4 → GND | 5 |
+| Pin LiPo | pad BAT+ / BAT− mặt dưới mạch (qua công tắc) | — |
+
 ## Lộ trình
 
-- [x] Tự dò và bám bàn cờ, tự nhận hướng
-- [x] Nhận diện quân (bàn cờ thật + bàn cờ 2D), train trên Colab
-- [x] Theo dõi ván, gợi ý Stockfish cho cả hai bên, tô ô gợi ý
-- [x] HUD 240×240 cho màn hình kính
-- [ ] Phiên bản kính (Raspberry Pi 5 + camera + màn hình ST7789) — xem [docs/hardware/glasses_plan.md](docs/hardware/glasses_plan.md)
-  - [ ] Chạy không cửa sổ (`scripts/glasses.py`), nút bấm GPIO
-  - [ ] Model NCNN cho CPU ARM, tối ưu tốc độ
-  - [ ] Hàn, lắp lên kính, tự chạy khi bật nguồn
+**Đã xong**
+- [x] Tự dò và bám bàn cờ, tự nhận hướng bàn cờ nhờ màu quân
+- [x] Nhận diện quân bằng YOLO11 (bàn cờ thật + bàn cờ 2D), train trên Colab
+- [x] Theo dõi ván bằng luật cờ, gợi ý Stockfish cho cả hai bên, tô ô gợi ý
+- [x] HUD 240×240 (thử bằng cửa sổ trên laptop)
+
+**Kính ESP32-S3** (thay cho kế hoạch Raspberry Pi 5 trong [docs/hardware/glasses_plan.md](docs/hardware/glasses_plan.md))
+1. Model FOMO
+   - [x] Đóng gói dữ liệu tâm quân + 4 góc (`scripts/prepare_fomo.py`)
+   - [x] Notebook train, đánh giá 64 ô, lượng tử hoá int8, xuất mã C (`notebooks/train_fomo_colab.ipynb`)
+   - [ ] Train trên Colab và xem độ đúng 64 ô (đầu-cuối, bản int8) có đủ dùng không
+2. Firmware cơ bản
+   - [x] Khung ESP-IDF: camera → FOMO → 64 ô qua Serial (`firmware/esp32s3_fomo`)
+   - [ ] Mua mạch, build, nạp, đo tốc độ thật trên XIAO ESP32S3 Sense
+3. Kết nối WiFi
+   - [ ] ESP32 gửi trạng thái 64 ô qua UDP
+   - [ ] `scripts/glasses_server.py` trên laptop: nhận trạng thái, theo dõi ván (`GameTracker`), chạy Stockfish, trả nước gợi ý
+4. Màn hình và nút bấm
+   - [ ] Vẽ HUD trên ST7789 bằng ESP32 (làm lại `chess_assistant/hud.py` bằng C)
+   - [ ] Nút bấm: tạm dừng / lật bàn / dò lại
+5. Lắp ráp
+   - [ ] Thử trên breadboard → hàn → gắn lên gọng kính, chạy bằng pin
+
+**Khác**
 - [ ] Thêm dữ liệu cho game cờ 3D trên màn hình (~300 ảnh tự quay)
 
 ## Nguồn dữ liệu và giấy phép

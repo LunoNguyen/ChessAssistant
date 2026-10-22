@@ -20,3 +20,10 @@ models/
 
 # Gói dữ liệu tải lên Colab
 colab_upload/
+
+# ESP-IDF
+firmware/*/build/
+firmware/*/managed_components/
+firmware/*/sdkconfig
+firmware/*/sdkconfig.old
+firmware/*/dependencies.lock
