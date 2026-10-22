@@ -1,4 +1,4 @@
-"""Vẽ kết quả lên video: lưới, mũi tên gợi ý, thanh điểm, sơ đồ mini, trạng thái.
+"""Vẽ kết quả lên video: viền bàn cờ, tô ô gợi ý (ô đi / ô đến), thanh điểm, sơ đồ mini, trạng thái.
 
 Chữ không dấu vì cv2.putText không vẽ được tiếng Việt có dấu.
 """
@@ -12,12 +12,20 @@ import cv2
 import numpy as np
 
 from chess_assistant.advisor import Advice
-from chess_assistant.board import BoardView, grid_lines_image, square_center_image
+from chess_assistant.board import BoardView, grid_lines_image, square_center_image, square_rect
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 ARROW_MAIN = (0, 220, 0)
 ARROW_ALT = (0, 170, 255)
 ARROW_BLACK = (255, 140, 0)  # xanh dương (BGR): gợi ý cho Đen khi chưa rõ lượt
+
+# Tô ô (BGR): ô quân cần đi / ô đích. Gợi ý cho Đen khi chưa rõ lượt dùng tông xanh dương.
+FROM_COLOR = (0, 215, 255)      # vàng
+TO_COLOR = (0, 200, 0)          # xanh lá
+ALT_FROM_COLOR = (255, 200, 80)  # xanh dương nhạt
+ALT_TO_COLOR = (255, 80, 0)      # xanh dương đậm
+OUTLINE_COLOR = (0, 255, 0)
+HIGHLIGHT_ALPHA = 0.5
 
 
 @dataclass
@@ -37,6 +45,35 @@ def draw_grid(img: np.ndarray, view: BoardView, color=(0, 255, 0)) -> None:
     for sq in (chess.A1, chess.H1, chess.H8, chess.A8):
         x, y = square_center_image(view.H, sq)
         cv2.putText(img, chess.square_name(sq), (x - 12, y + 6), FONT, 0.6, (0, 0, 255), 2)
+
+
+def square_polygon(H: np.ndarray, square: chess.Square) -> np.ndarray:
+    """4 góc của một ô, chiếu ngược về ảnh camera."""
+    x0, y0, x1, y1 = square_rect(square)
+    pts = np.float32([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]).reshape(-1, 1, 2)
+    return np.rint(cv2.perspectiveTransform(pts, np.linalg.inv(H)).reshape(4, 2)).astype(np.int32)
+
+
+def highlight_squares(img: np.ndarray, H: np.ndarray, squares: list[tuple[chess.Square, tuple]],
+                      alpha: float = HIGHLIGHT_ALPHA) -> None:
+    """Tô bán trong suốt các ô (vẽ tại chỗ) và kẻ viền đậm cho dễ thấy."""
+    if not squares:
+        return
+    layer = img.copy()
+    mask = np.zeros(img.shape[:2], np.uint8)
+    for sq, color in squares:
+        poly = square_polygon(H, sq)
+        cv2.fillPoly(layer, [poly], color)
+        cv2.fillPoly(mask, [poly], 255)
+    blended = cv2.addWeighted(layer, alpha, img, 1 - alpha, 0)
+    img[mask > 0] = blended[mask > 0]
+    for sq, color in squares:
+        cv2.polylines(img, [square_polygon(H, sq)], True, color, 2, cv2.LINE_AA)
+
+
+def draw_outline(img: np.ndarray, view: BoardView, color=OUTLINE_COLOR, thickness: int = 2) -> None:
+    """Chỉ vẽ viền ngoài của bàn cờ (không kẻ ô)."""
+    cv2.polylines(img, [np.rint(view.corners).astype(np.int32)], True, color, thickness, cv2.LINE_AA)
 
 
 def draw_arrow(img: np.ndarray, H: np.ndarray, move: chess.Move, color=ARROW_MAIN, thickness: int = 6) -> None:
@@ -93,16 +130,18 @@ def _bar(img: np.ndarray, y: int, text: str, color) -> None:
 def render(frame: np.ndarray, view: BoardView | None, state: OverlayState) -> np.ndarray:
     img = frame.copy()
     if view is not None:
-        grid = img.copy()
-        draw_grid(grid, view)
-        img = cv2.addWeighted(grid, 0.4, img, 0.6, 0)
+        draw_outline(img, view)
         if state.advice is not None:
-            for move in reversed(state.advice.moves[1:]):
-                draw_arrow(img, view.H, move, ARROW_ALT, 3)
+            # Các biến phụ (multipv): chỉ kẻ viền ô đích, màu cam.
+            for move in state.advice.moves[1:]:
+                cv2.polylines(img, [square_polygon(view.H, move.to_square)], True, ARROW_ALT, 2, cv2.LINE_AA)
+            squares = []
             if state.advice.moves:
-                draw_arrow(img, view.H, state.advice.moves[0])
+                best = state.advice.moves[0]
+                squares += [(best.from_square, FROM_COLOR), (best.to_square, TO_COLOR)]
             for move in state.advice.alt_moves:
-                draw_arrow(img, view.H, move, ARROW_BLACK)
+                squares += [(move.from_square, ALT_FROM_COLOR), (move.to_square, ALT_TO_COLOR)]
+            highlight_squares(img, view.H, squares)
 
     if state.advice is not None:
         draw_eval_bar(img, state.advice.white_cp)

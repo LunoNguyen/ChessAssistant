@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-SCRIPTS = ["play", "live_view", "calibrate", "check_engine", "prepare_dataset", "train_pieces", "capture_labeled", "replay", "eval_pieces", "import_chessred", "replay_chessred", "capture_geometric", "export_colab", "import_chess_positions"]
+SCRIPTS = ["play", "live_view", "calibrate", "check_engine", "prepare_dataset", "train_pieces", "capture_labeled", "replay", "eval_pieces", "import_chessred", "replay_chessred", "capture_geometric", "export_colab", "import_chess_positions", "hud_test"]
 
 
 @pytest.mark.parametrize("script", SCRIPTS)

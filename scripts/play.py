@@ -32,6 +32,7 @@ from chess_assistant.advisor import Advisor
 from chess_assistant.camera import ReconnectingCamera, open_camera
 from chess_assistant.engine import Engine, find_stockfish
 from chess_assistant.game import GameTracker
+from chess_assistant.hud import WindowDisplay, render_hud
 from chess_assistant.overlay import render
 from chess_assistant.pieces import MODELS_DIR, PieceDetector
 from chess_assistant.pipeline import Pipeline
@@ -51,6 +52,9 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--multipv", type=int, default=1)
     ap.add_argument("--mode", choices=["best", "training"], default="best")
     ap.add_argument("--elo", type=int, default=1500)
+    ap.add_argument("--hud", action="store_true", help="Mở thêm cửa sổ 240x240 mô phỏng màn hình kính")
+    ap.add_argument("--hud-scale", type=int, default=1, help="Phóng to cửa sổ HUD (vd 2 = 480x480)")
+    ap.add_argument("--hud-mirror", action="store_true", help="Lật gương HUD (kính dùng tấm phản xạ)")
     ap.add_argument("--side", choices=["both", "me"], default="both",
                     help="both: gợi ý mọi lượt (mặc định); me: chỉ lượt của bạn (bên gần camera)")
     return ap.parse_args()
@@ -101,6 +105,7 @@ def main() -> int:
     advisor = Advisor(engine, args.think_time, args.multipv, args.mode, args.elo, side=args.side)
     pipeline = Pipeline(detector, tracker, GameTracker(), advisor)
     blank = np.zeros((args.height, args.width, 3), np.uint8)
+    hud = WindowDisplay(scale=args.hud_scale) if args.hud else None
     try:
         while True:
             frame = camera.read()
@@ -111,6 +116,8 @@ def main() -> int:
             else:
                 result = pipeline.process(frame)
                 shown = render(frame, result.view, result.overlay)
+                if hud is not None:
+                    hud.show(render_hud(result.overlay, mirror=args.hud_mirror))
             cv2.imshow(WINDOW, shown)
             if not handle_key(cv2.waitKey(1) & 0xFF, pipeline):
                 break

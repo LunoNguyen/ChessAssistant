@@ -16,14 +16,15 @@ import numpy as np
 
 from chess_assistant.advisor import Advisor
 from chess_assistant.board import BoardView, user_color_from_corners
-from chess_assistant.game import GameEvent, GameTracker, SyncState, match_count
+from chess_assistant.game import GameEvent, GameTracker, SyncState, _plausibility, board_from_labels, match_count
 from chess_assistant.overlay import OverlayState
 from chess_assistant.reading import read_board
-from chess_assistant.schema import PieceBox
+from chess_assistant.schema import PieceBox, argmax_labels
 from chess_assistant.stability import StabilityFilter
 from chess_assistant.tracker import BoardTracker
 
 REALIGN_MOVE_SLACK = 4   # một nước đi đổi tối đa 4 ô (nhập thành)
+ORIENT_MIN_GAIN = 3      # chưa biết thế cờ: số Tốt đứng đúng phía phải hơn hướng hiện tại
 REALIGN_MIN_GAIN = 6     # hướng mới phải khớp hơn hướng cũ ít nhất chừng này ô (tàn cuộc ít quân:
                          # hướng sai vẫn khớp nhiều ô trống, nên chênh lệch chỉ ~15 ô)
 
@@ -148,7 +149,7 @@ class Pipeline:
         elif self.game.state == SyncState.NEED_TURN and self.game.pending is not None:
             board = self.game.pending  # đã đọc lại được thế cờ, chỉ chưa rõ lượt
         else:
-            return None
+            return self._orient_by_colors(boxes, reading)
         current = match_count(reading, board)
         if current >= self.game.min_match:
             return None
@@ -167,6 +168,38 @@ class Pipeline:
         self.tracker.rotate(best[1])
         self.stability.reset()
         return best[2]
+
+    def _orient_by_colors(self, boxes: list[PieceBox], reading: np.ndarray) -> np.ndarray | None:
+        """Chưa biết thế cờ: dùng màu quân để chọn góc a1, khỏi phải bấm f.
+
+        Thử 4 hướng xoay. Hướng nào khớp thế khởi đầu thì chọn ngay; nếu không, chọn hướng cho thế cờ
+        hợp lệ có Tốt Trắng/Đen đứng đúng phía nhất (chỉ đổi khi hơn hẳn hướng hiện tại, tránh xoay qua lại).
+        """
+        start = chess.Board()
+        cands = [(0, reading)] + [
+            (k, read_board(boxes, BoardView.from_corners(np.roll(self.tracker.corners, k, axis=0)).H, self.foot_lift))
+            for k in (1, 2, 3)
+        ]
+        if match_count(reading, start) < self.game.min_match:
+            k, best = max(cands, key=lambda c: match_count(c[1], start))
+            if match_count(best, start) >= self.game.min_match:
+                return self._apply_rotation(k, best)
+
+        def plausible(r: np.ndarray) -> int:
+            b = board_from_labels(argmax_labels(r), flip=False)
+            return -1 if b is None else _plausibility(b)
+
+        scores = [(plausible(r), k, r) for k, r in cands]
+        current = scores[0][0]
+        score, k, best = max(scores, key=lambda t: t[0])
+        if k != 0 and score >= 0 and score - current >= ORIENT_MIN_GAIN:
+            return self._apply_rotation(k, best)
+        return None
+
+    def _apply_rotation(self, k: int, reading: np.ndarray) -> np.ndarray:
+        self.tracker.rotate(k)
+        self.stability.reset()
+        return reading
 
     def _view_for(self, corners: np.ndarray | None) -> BoardView | None:
         if corners is None:

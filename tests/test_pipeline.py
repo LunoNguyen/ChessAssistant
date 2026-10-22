@@ -218,3 +218,23 @@ def test_rotation_realigned_while_waiting_for_turn():
     s.board.push_uci("h2h3")
     s.run(12)
     assert [e.moves for e in s.events if e.kind == "moves"] == [[chess.Move.from_uci("h2h3")]]
+
+
+def test_orientation_found_from_piece_colors_before_sync():
+    """Chưa bám ván mà tracker chọn sai góc a1 (lệch 90°): nhờ màu quân, tự xoay đúng — không cần bấm f."""
+    s = Scenario("white_side", chess.Board())
+    s.run(1)
+    s.pipeline.tracker.rotate(1)
+    s.run(12)
+    assert "synced" in kinds(s.events)
+    err = np.linalg.norm(s.pipeline.tracker.corners - np.float32(POSES["white_side"]), axis=1).max()
+    assert err < 6
+
+
+def test_orientation_found_for_midgame_before_sync():
+    s = Scenario("white_side", chess.Board(MIDGAME))
+    s.run(1)
+    s.pipeline.tracker.rotate(3)
+    s.run(12)
+    assert s.pipeline.game.state.value == "need_turn"
+    assert s.pipeline.game.pending.board_fen() == chess.Board(MIDGAME).board_fen()
